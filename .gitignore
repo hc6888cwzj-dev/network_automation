@@ -3,3 +3,4 @@
 __pycache__/
 secrets.yml  # Заглушка на будущее, когда будем использовать Ansible Vault для паролей
 backups/
+.vault_pass
