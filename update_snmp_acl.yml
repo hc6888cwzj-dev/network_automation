@@ -1,0 +1,15 @@
+---
+- name: Обновление списка доступа SNMP_ACCESS
+  hosts: catalyst  # Укажи нужную группу коммутаторов из файла hosts
+  gather_facts: false
+
+  tasks:
+    - name: Добавление хоста 192.168.4.200 в ACL SNMP_ACCESS
+      cisco.ios.ios_config:
+        # Указываем родительский режим (Ansible сам введет эту команду перед добавлением строк)
+        parents: ip access-list standard SNMP_ACCESS
+        lines:
+          # Сама команда, которую нужно добавить
+          - permit 192.168.4.200
+        # Автоматически сделать 'write memory', если были внесены изменения
+        save_when: modified

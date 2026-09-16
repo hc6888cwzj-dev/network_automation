@@ -1,0 +1,46 @@
+---
+- name: Резервное копирование конфигураций Catalyst
+  hosts: catalyst
+  gather_facts: false
+
+  tasks:
+    - name: Создание директории для бэкапов на ноутбуке
+      delegate_to: localhost
+      run_once: true
+      ansible.builtin.file:
+        path: ./backups
+        state: directory
+
+    - name: Сбор running-config и сохранение в файл
+      cisco.ios.ios_config:
+        backup: true
+        backup_options:
+          dir_path: ./backups
+          # Имя файла будет состоять из IP-адреса и суффикса
+          filename: "{{ inventory_hostname }}_config.txt"
+
+# Блок выполняется после того, как все конфигурации скачаны
+  post_tasks:
+    - name: Фиксация изменений в Git
+      delegate_to: localhost
+      run_once: true
+      ansible.builtin.shell: |
+        # Инициализируем репозиторий (безопасно запускать много раз)
+        git init
+        
+        # Добавляем все файлы в индекс
+        git add .
+        
+        # Проверяем, есть ли реальные изменения в файлах
+        if ! git diff-index --quiet HEAD --; then
+          # Если есть — делаем коммит с текущей датой
+          git commit -m "Auto backup $(date +'%Y-%m-%d %H:%M')"
+          echo "Изменения закоммичены"
+        else
+          echo "Нет изменений для коммита"
+        fi
+      args:
+        chdir: ./backups
+      register: git_result
+      # Ansible подсветит желтым, только если был сделан новый коммит
+      changed_when: "'Изменения закоммичены' in git_result.stdout"

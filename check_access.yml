@@ -1,0 +1,15 @@
+---
+- name: Проверка доступа к коммутаторам Catalyst
+  hosts: catalyst
+  # Отключаем стандартный сбор фактов (он для Linux/Windows)
+  gather_facts: false
+
+  tasks:
+    - name: Сбор базовых фактов с устройства
+      cisco.ios.ios_facts:
+        # Собираем только минимум инфы, чтобы было быстро
+        gather_subset: min
+
+    - name: Вывод имени устройства и версии прошивки
+      debug:
+        msg: "Успешное подключение! Устройство: {{ ansible_net_hostname }}, Версия IOS: {{ ansible_net_version }}"

@@ -1,0 +1,24 @@
+---
+- name: Проверка связи с Cisco FMC API
+  # Теперь обращаемся к группе из файла hosts
+  hosts: fmc
+  gather_facts: false
+
+  tasks:
+    - name: Шаг 1. Получение Domain UUID из FMC
+      cisco.fmcansible.fmc_configuration:
+        operation: getAllDomain
+        register_as: domain
+
+    - name: Шаг 2. Получение списка подключенных Firepower
+      cisco.fmcansible.fmc_configuration:
+        operation: getAllDevice
+        path_params:
+          domainUUID: "{{ domain[0].uuid }}"
+        register_as: devices
+      
+    - name: Шаг 3. Вывод информации об устройствах
+      debug:
+        msg: "Устройство: {{ item.name }} | IP: {{ item.hostName | default('N/A') }}"
+      loop: "{{ devices }}"
+      when: devices is defined

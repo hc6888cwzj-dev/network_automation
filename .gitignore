@@ -1,0 +1,4 @@
+*.retry
+*.log
+__pycache__/
+secrets.yml  # Заглушка на будущее, когда будем использовать Ansible Vault для паролей
