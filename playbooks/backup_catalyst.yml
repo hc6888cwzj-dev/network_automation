@@ -1,0 +1,20 @@
+---
+- name: Backup Catalyst Configurations
+  hosts: catalyst_ext
+  gather_facts: false
+  
+  tasks:
+    - name: Create backups directory locally
+      ansible.builtin.file:
+        path: ../backups/
+        state: directory
+        mode: '0755'
+      delegate_to: localhost
+      run_once: true
+
+    - name: Backup running-config from device
+      cisco.ios.ios_config:
+        backup: true
+        backup_options:
+          dir_path: ../backups/
+          filename: "{{ inventory_hostname }}_{{ now(fmt='%Y-%m-%d_%H-%M') }}.cfg"

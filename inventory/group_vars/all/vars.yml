@@ -1,0 +1,6 @@
+ansible_user: "{{ vault_cisco_user }}"
+ansible_password: "{{ vault_cisco_pass }}"
+ansible_network_os: "cisco.ios.ios"
+ansible_connection: "network_cli"
+ansible_ssh_common_args: '-o PubkeyAuthentication=no'
+ansible_network_cli_ssh_type: "paramiko"

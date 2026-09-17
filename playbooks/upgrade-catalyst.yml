@@ -1,0 +1,111 @@
+---
+- name: Умное обновление прошивок Catalyst 9200/9300/L
+  hosts: switches
+  gather_facts: false
+  
+  vars:
+    # 1. Задаем файлы и хэши для разных линеек (впиши свои актуальные)
+    image_9200: "cat9k_lite_iosxe.17.09.04a.SPA.bin"
+    md5_9200:   "11111111111111111111111111111111"
+    
+    image_9300: "cat9k_iosxe.17.09.04a.SPA.bin"
+    md5_9300:   "22222222222222222222222222222222"
+    
+    # 2. Общие настройки пути
+    local_dir: "/home/твое_имя/network_automation/firmware/"
+    required_space_bytes: 1500000000
+
+  tasks:
+    # ================= БЛОК АВТООПРЕДЕЛЕНИЯ МОДЕЛИ =================
+    
+    - name: Шаг 0.1. Сбор информации об оборудовании (Hardware Facts)
+      cisco.ios.ios_facts:
+        gather_subset: hardware
+
+    - name: Шаг 0.2. Назначение прошивки для линейки Catalyst 9200 / 9200L
+      ansible.builtin.set_fact:
+        target_firmware: "{{ image_9200 }}"
+        target_md5: "{{ md5_9200 }}"
+      # Если в названии модели есть '9200' (покроет и C9200, и C9200L)
+      when: "'9200' in ansible_net_model"
+
+    - name: Шаг 0.3. Назначение прошивки для линейки Catalyst 9300 / 9300L
+      ansible.builtin.set_fact:
+        target_firmware: "{{ image_9300 }}"
+        target_md5: "{{ md5_9300 }}"
+      # Если в названии модели есть '9300' (покроет и C9300, и C9300L)
+      when: "'9300' in ansible_net_model"
+
+    - name: Шаг 0.4. Защита от неизвестных устройств
+      ansible.builtin.assert:
+        that: target_firmware is defined
+        fail_msg: "ОШИБКА: Модель {{ ansible_net_model }} не поддерживается этим плейбуком!"
+        success_msg: "Определена модель {{ ansible_net_model }}. Выбран файл: {{ target_firmware }}"
+
+    # ================= БЛОК ПРОВЕРОК И ПОДГОТОВКИ =================
+
+    - name: Шаг 1. Проверка и включение SCP
+      cisco.ios.ios_config:
+        lines:
+          - ip scp server enable
+        save_when: modified
+
+    - name: Шаг 2. Очистка старых (неактивных) прошивок
+      cisco.ios.ios_command:
+        commands:
+          - command: "install remove inactive prompt-level none"
+      vars:
+        ansible_command_timeout: 600
+
+    - name: Шаг 3. Проверка свободного места на bootflash:
+      cisco.ios.ios_command:
+        commands: "dir bootflash:"
+      register: dir_output
+
+    - name: Шаг 4. Утверждение (Assert) достаточного объема памяти
+      ansible.builtin.assert:
+        that:
+          - "(dir_output.stdout[0] | regex_search('\\((\\d+) bytes free\\)', '\\1') | first | int) > required_space_bytes"
+        fail_msg: "ОШИБКА: Недостаточно места на bootflash:!"
+
+    # ================= БЛОК ПЕРЕДАЧИ И УСТАНОВКИ =================
+
+    - name: Шаг 5. Копирование файла прошивки (по SCP)
+      ansible.netcommon.net_put:
+        src: "{{ local_dir }}{{ target_firmware }}"
+        dest: "bootflash:{{ target_firmware }}"
+        protocol: scp
+      vars:
+        ansible_command_timeout: 1800
+
+    - name: Шаг 6. Подсчет MD5-хэша на коммутаторе
+      cisco.ios.ios_command:
+        commands:
+          - command: "verify /md5 bootflash:{{ target_firmware }}"
+      register: md5_result
+      vars:
+        ansible_command_timeout: 300
+
+    - name: Шаг 7. Сверка хэш-сумм
+      ansible.builtin.assert:
+        that:
+          - "target_md5 in md5_result.stdout[0]"
+        fail_msg: "КРИТИЧЕСКАЯ ОШИБКА: MD5 хэш загруженного файла не совпадает!"
+
+    - name: Шаг 8. Запуск установки (Install & Reboot)
+      cisco.ios.ios_command:
+        commands:
+          - command: "install add file bootflash:{{ target_firmware }} activate commit prompt-level none"
+      vars:
+        ansible_command_timeout: 2400
+
+    # ================= БЛОК ВАЛИДАЦИИ =================
+
+    - name: Шаг 9. Ожидание возвращения в сеть после ребута
+      ansible.builtin.wait_for_connection:
+        delay: 180
+        timeout: 1200
+
+    - name: Итог
+      debug:
+        msg: "✅ {{ inventory_hostname }} ({{ ansible_net_model }}) успешно обновлен!"
